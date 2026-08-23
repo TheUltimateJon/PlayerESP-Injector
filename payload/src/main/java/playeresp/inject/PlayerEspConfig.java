@@ -9,14 +9,13 @@ import java.nio.charset.StandardCharsets;
 
 public final class PlayerEspConfig {
     public boolean enabled = true;
-    public int boxMode = 1; // 0 off, 1 2D, 2 3D, 3 both
+    public int boxMode = 1; // 0 off, 1 2D, 2 3D
     public float outlineThickness = 2.0F;
     public boolean chams = false;
     public int chamsTransparency = 65;
     public boolean renderNpcs = false;
-    public int colorMode = 0; // 0 nametag/team color, 1 custom
+    public int colorMode = 1; // 0 nametag/team color, 1 custom
     public boolean nametag = true;
-    public boolean modifyNametag = true;
     public float nameScale = 1.0F;
     public int healthBarPosition = 2; // 0 off, 1 top, 2 side
     public boolean healthText = true;
@@ -25,7 +24,7 @@ public final class PlayerEspConfig {
     public boolean heldItem = false;
     public boolean targetHud = true;
     public int maxDistance = 128;
-    public int color = 0xFFFF5555;
+    public int color = 0xFFAAAAAA;
     public int menuKey = 43;
     public int toggleKey = 0;
 
@@ -50,6 +49,9 @@ public final class PlayerEspConfig {
         try (Reader reader = new InputStreamReader(new FileInputStream(source), StandardCharsets.UTF_8)) {
             PlayerEspConfig config = GSON.fromJson(reader, PlayerEspConfig.class);
             if (config == null) config = new PlayerEspConfig();
+            if (config.boxMode < 0 || config.boxMode > 2) config.boxMode = 1;
+            if (config.nameScale < 0.5F || config.nameScale > 2.0F) config.nameScale = 1.0F;
+            if (config.colorMode == 1 && config.color == 0xFFFF5555) config.color = 0xFFAAAAAA;
             if (!source.equals(file)) config.save();
             return config;
         } catch (Exception ignored) {

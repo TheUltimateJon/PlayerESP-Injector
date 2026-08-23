@@ -41,7 +41,7 @@ public final class PlayerEspController {
     private Field shaderShadowPassField;
     private Method forgeRenderPassMethod;
     private List<EntityPlayer> cachedPlayers=Collections.emptyList();
-    private long lastRenderNanos;
+    private long lastWorldRenderNanos,lastOverlayRenderNanos,lastOverlayCallbackNanos;
     private final ScheduledExecutorService saveExecutor=Executors.newSingleThreadScheduledExecutor(new ThreadFactory(){@Override public Thread newThread(Runnable task){Thread thread=new Thread(task,"PlayerESP Config Save");thread.setDaemon(true);return thread;}});
     private ScheduledFuture<?> pendingSave;
     private final Map<ScorePlayerTeam,Team.EnumVisible> hiddenTeamVisibility=new IdentityHashMap<ScorePlayerTeam,Team.EnumVisible>();
@@ -51,18 +51,31 @@ public final class PlayerEspController {
 
     public PlayerEspController(){System.setProperty(ACTIVE_PROPERTY,instanceToken);}
 
-    public void onTick(){if(!isActiveInstance())return;updateKeys();if(mc.theWorld!=trackedWorld){restoreVanillaNametags();trackedWorld=mc.theWorld;fallbackEntity=null;cachedPlayers=Collections.emptyList();}if(config.enabled&&mc.theWorld!=null&&mc.thePlayer!=null)cachedPlayers=PlayerEspRenderer.collectPlayers(mc,config);else cachedPlayers=Collections.emptyList();updateVanillaNametags();}
+    public void onTick(){if(!isActiveInstance())return;updateKeys();if(mc.theWorld!=trackedWorld){restoreVanillaNametags();trackedWorld=mc.theWorld;fallbackEntity=null;cachedPlayers=Collections.emptyList();}if(config.enabled&&mc.theWorld!=null&&mc.thePlayer!=null)cachedPlayers=PlayerEspRenderer.collectPlayers(mc,config);else cachedPlayers=Collections.emptyList();updateVanillaNametags();ensureFallbackEntity();}
     private void updateKeys(){boolean menu=config.menuKey!=Keyboard.KEY_NONE&&Keyboard.isKeyDown(config.menuKey);boolean toggle=config.toggleKey!=Keyboard.KEY_NONE&&Keyboard.isKeyDown(config.toggleKey);
         if(mc.currentScreen==null&&menu&&!menuWasDown)mc.displayGuiScreen(new PlayerEspScreen(this,config));else if(mc.currentScreen==null&&toggle&&!toggleWasDown){config.enabled=!config.enabled;save();}menuWasDown=menu;toggleWasDown=toggle;}
-    public void onRender(int pass){
-        if(!isActiveInstance()||!config.enabled||mc.thePlayer==null||mc.theWorld==null||mc.currentScreen instanceof PlayerEspScreen||pass!=0||isSecondaryPass())return;
-        long now=System.nanoTime();if(now-lastRenderNanos<5000000L)return;lastRenderNanos=now;
+    void onEntityRender(final float partial){
+        if(!isActiveInstance()||!config.enabled||mc.thePlayer==null||mc.theWorld==null||isSecondaryPass())return;
+        long now=System.nanoTime();if(now-lastWorldRenderNanos<5000000L)return;lastWorldRenderNanos=now;
+        renderSafely(new RenderAction(){@Override public void run(){PlayerEspRenderer.renderWorld(mc,config,cachedPlayers,partial);}});
+        if(now-lastOverlayCallbackNanos>250000000L)renderOverlay(now);
+    }
+    public void onOverlayRender(int pass){
+        if(!isActiveInstance()||mc.thePlayer==null||mc.theWorld==null||pass!=0||isSecondaryPass())return;
+        long now=System.nanoTime();lastOverlayCallbackNanos=now;renderOverlay(now);
+    }
+    private void renderOverlay(long now){
+        if(!config.enabled||!config.targetHud||now-lastOverlayRenderNanos<5000000L)return;lastOverlayRenderNanos=now;
+        renderSafely(new RenderAction(){@Override public void run(){PlayerEspRenderer.renderOverlay(mc,config);}});
+    }
+    private void renderSafely(RenderAction action){
         int oldMode=GL11.glGetInteger(GL11.GL_MATRIX_MODE),oldTexture=GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D),blendSrcRgb=GL11.glGetInteger(0x80C9),blendDstRgb=GL11.glGetInteger(0x80C8),blendSrcAlpha=GL11.glGetInteger(0x80CB),blendDstAlpha=GL11.glGetInteger(0x80CA);
         boolean depth=GL11.glIsEnabled(GL11.GL_DEPTH_TEST),blend=GL11.glIsEnabled(GL11.GL_BLEND),texture=GL11.glIsEnabled(GL11.GL_TEXTURE_2D),lighting=GL11.glIsEnabled(GL11.GL_LIGHTING),fog=GL11.glIsEnabled(GL11.GL_FOG),alpha=GL11.glIsEnabled(GL11.GL_ALPHA_TEST),cull=GL11.glIsEnabled(GL11.GL_CULL_FACE),depthMask=GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPushMatrix();GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPushMatrix();
-        try{PlayerEspRenderer.render(mc,config,cachedPlayers);}finally{GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPopMatrix();GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPopMatrix();GL11.glMatrixMode(oldMode);GL11.glPopAttrib();syncRenderState(depth,blend,texture,lighting,fog,alpha,cull,depthMask,oldTexture,blendSrcRgb,blendDstRgb,blendSrcAlpha,blendDstAlpha);}
+        try{action.run();}finally{GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPopMatrix();GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPopMatrix();GL11.glMatrixMode(oldMode);GL11.glPopAttrib();syncRenderState(depth,blend,texture,lighting,fog,alpha,cull,depthMask,oldTexture,blendSrcRgb,blendDstRgb,blendSrcAlpha,blendDstAlpha);}
     }
-    void onFallbackTick(){onTick();ensureFallbackEntity();}
+    private interface RenderAction{void run();}
+    void onFallbackTick(){onTick();}
     void enableFallbackRendering(){if(fallbackInstalled)return;RenderManager manager=mc.getRenderManager();Map map=findRendererMap(manager);if(map==null)throw new IllegalStateException("Minecraft entity renderer map was not found.");map.put(PlayerEspRenderEntity.class,new PlayerEspEntityRenderer(manager,this));fallbackInstalled=true;}
     private void ensureFallbackEntity(){if(!fallbackInstalled||mc.theWorld==null||mc.thePlayer==null)return;if(fallbackWorld!=mc.theWorld){if(fallbackWorld!=null&&fallbackEntity!=null)fallbackWorld.removeEntityFromWorld(FALLBACK_ENTITY_ID);fallbackWorld=mc.theWorld;fallbackEntity=null;}
         if(fallbackEntity==null||fallbackWorld.getEntityByID(FALLBACK_ENTITY_ID)!=fallbackEntity){fallbackEntity=new PlayerEspRenderEntity(fallbackWorld);fallbackWorld.addEntityToWorld(FALLBACK_ENTITY_ID,fallbackEntity);}fallbackEntity.setPosition(mc.thePlayer.posX,mc.thePlayer.posY,mc.thePlayer.posZ);fallbackEntity.lastTickPosX=fallbackEntity.prevPosX=fallbackEntity.posX;fallbackEntity.lastTickPosY=fallbackEntity.prevPosY=fallbackEntity.posY;fallbackEntity.lastTickPosZ=fallbackEntity.prevPosZ=fallbackEntity.posZ;}
@@ -75,7 +88,7 @@ public final class PlayerEspController {
     private boolean isActiveInstance(){return instanceToken.equals(System.getProperty(ACTIVE_PROPERTY));}
     private static void syncRenderState(boolean depth,boolean blend,boolean texture,boolean lighting,boolean fog,boolean alpha,boolean cull,boolean depthMask,int boundTexture,int srcRgb,int dstRgb,int srcAlpha,int dstAlpha){if(depth)GlStateManager.enableDepth();else GlStateManager.disableDepth();if(blend)GlStateManager.enableBlend();else GlStateManager.disableBlend();if(texture)GlStateManager.enableTexture2D();else GlStateManager.disableTexture2D();if(lighting)GlStateManager.enableLighting();else GlStateManager.disableLighting();if(fog)GlStateManager.enableFog();else GlStateManager.disableFog();if(alpha)GlStateManager.enableAlpha();else GlStateManager.disableAlpha();if(cull)GlStateManager.enableCull();else GlStateManager.disableCull();GlStateManager.depthMask(depthMask);GlStateManager.tryBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);GlStateManager.bindTexture(boundTexture);GlStateManager.color(1,1,1,1);}
     private void updateVanillaNametags(){
-        if(!config.enabled||!config.nametag||!config.modifyNametag||mc.theWorld==null){restoreVanillaNametags();return;}
+        if(!config.enabled||!config.nametag||mc.theWorld==null){restoreVanillaNametags();return;}
         Scoreboard scoreboard=mc.theWorld.getScoreboard();if(hiddenScoreboard!=scoreboard){restoreVanillaNametags();hiddenScoreboard=scoreboard;}
         for(EntityPlayer player:cachedPlayers){ScorePlayerTeam team=scoreboard.getPlayersTeam(player.getName());if(team!=null){if(!hiddenTeamVisibility.containsKey(team))hiddenTeamVisibility.put(team,team.getNameTagVisibility());team.setNameTagVisibility(Team.EnumVisible.NEVER);continue;}
             if(temporaryHiddenTeam==null){String name="tbpesp_hide";for(int i=1;scoreboard.getTeam(name)!=null;i++)name="tbpesp_h"+i;temporaryHiddenTeam=scoreboard.createTeam(name);temporaryHiddenTeam.setNameTagVisibility(Team.EnumVisible.NEVER);}if(scoreboard.addPlayerToTeam(player.getName(),temporaryHiddenTeam.getRegisteredName()))temporaryHiddenNames.add(player.getName());}

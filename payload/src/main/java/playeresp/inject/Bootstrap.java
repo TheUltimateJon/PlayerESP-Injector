@@ -20,7 +20,11 @@ public final class Bootstrap {
         try {
             mc.addScheduledTask(new Runnable() {
                 @Override public void run() {
-                    if (controller == null) controller = new PlayerEspController();
+                    if (controller == null) {
+                        controller = new PlayerEspController();
+                        controller.enableFallbackRendering();
+                        controller.onTick();
+                    }
                 }
             }).get(10, TimeUnit.SECONDS);
         } catch (InterruptedException exception) {
@@ -41,7 +45,7 @@ public final class Bootstrap {
 
     public static void onWorldRender(int pass) {
         PlayerEspController value = controller;
-        if (value != null) value.onRender(pass);
+        if (value != null) value.onOverlayRender(pass);
     }
 
     public static synchronized void startFallback() {
@@ -51,7 +55,6 @@ public final class Bootstrap {
         try {
             mc.addScheduledTask(new Runnable() {
                 @Override public void run() {
-                    controller.enableFallbackRendering();
                     controller.onFallbackTick();
                 }
             }).get(10, TimeUnit.SECONDS);

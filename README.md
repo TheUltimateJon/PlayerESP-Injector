@@ -15,9 +15,9 @@ Features:
 Build the payload first, then embed it into the native library:
 
 ```powershell
-.\gradlew.bat -p ".\playeresp-injector\payload" clean payloadJars
-cmake -S ".\playeresp-injector\native" -B ".\playeresp-injector\native\build" -G Ninja -DJAVA_HOME="C:/Users/HP/AppData/Local/Programs/Eclipse Adoptium/jdk-8.0.502.7-hotspot"
-cmake --build ".\playeresp-injector\native\build" --config Release
+.\gradlew.bat -p ".\payload" clean payloadJars
+cmake -S ".\native" -B ".\native\build" -G Ninja -DJAVA_HOME="<path to your JDK 8>"
+cmake --build ".\native\build" --config Release
 ```
 
 Runtime files:

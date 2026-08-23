@@ -1,5 +1,0 @@
-C:/Users/HP/Desktop/mdk/playeresp-injector/native/build/CMakeFiles/loader.dir
-C:/Users/HP/Desktop/mdk/playeresp-injector/native/build/CMakeFiles/playeresp_hook.dir
-C:/Users/HP/Desktop/mdk/playeresp-injector/native/build/CMakeFiles/playeresp_library.dir
-C:/Users/HP/Desktop/mdk/playeresp-injector/native/build/CMakeFiles/edit_cache.dir
-C:/Users/HP/Desktop/mdk/playeresp-injector/native/build/CMakeFiles/rebuild_cache.dir

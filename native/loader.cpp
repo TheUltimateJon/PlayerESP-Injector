@@ -1,0 +1,6 @@
+#define INJECTOR_CONSOLE_TITLE L"PlayerESP Loader"
+#define INJECTOR_LIBRARY_FILE L"playeresp_library.dll"
+#define INJECTOR_ENTRY_FILE L"Entry.dll"
+#define INJECTOR_BOOTSTRAP_EXPORT "PlayerEspBootstrap"
+#define INJECTOR_SUCCESS_MESSAGE L"Success. Press \\ in Minecraft."
+#include "../../bedesp-injector/native/loader.cpp"

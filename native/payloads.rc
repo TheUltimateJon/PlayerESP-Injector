@@ -1,0 +1,3 @@
+101 RCDATA "../payload/build/libs/playeresp_payload.jar"
+102 RCDATA "../payload/build/libs/playeresp_payload-runtime.jar"
+103 RCDATA "../payload/build/libs/playeresp_payload-named.jar"

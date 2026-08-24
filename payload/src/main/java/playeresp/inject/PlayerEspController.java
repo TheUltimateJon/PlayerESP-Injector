@@ -5,6 +5,7 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.client.renderer.entity.RenderManager;
 import net.minecraft.client.renderer.GlStateManager;
+import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.scoreboard.ScorePlayerTeam;
@@ -13,6 +14,7 @@ import net.minecraft.scoreboard.Team;
 import net.minecraft.world.World;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL13;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -42,6 +44,7 @@ public final class PlayerEspController {
     private Method forgeRenderPassMethod;
     private List<EntityPlayer> cachedPlayers=Collections.emptyList();
     private long lastWorldRenderNanos,lastOverlayRenderNanos,lastOverlayCallbackNanos;
+    private float latestPartialTicks=1.0F;
     private final ScheduledExecutorService saveExecutor=Executors.newSingleThreadScheduledExecutor(new ThreadFactory(){@Override public Thread newThread(Runnable task){Thread thread=new Thread(task,"PlayerESP Config Save");thread.setDaemon(true);return thread;}});
     private ScheduledFuture<?> pendingSave;
     private final Map<ScorePlayerTeam,Team.EnumVisible> hiddenTeamVisibility=new IdentityHashMap<ScorePlayerTeam,Team.EnumVisible>();
@@ -51,32 +54,40 @@ public final class PlayerEspController {
 
     public PlayerEspController(){System.setProperty(ACTIVE_PROPERTY,instanceToken);}
 
-    public void onTick(){if(!isActiveInstance())return;updateKeys();if(mc.theWorld!=trackedWorld){restoreVanillaNametags();trackedWorld=mc.theWorld;fallbackEntity=null;cachedPlayers=Collections.emptyList();}if(config.enabled&&mc.theWorld!=null&&mc.thePlayer!=null)cachedPlayers=PlayerEspRenderer.collectPlayers(mc,config);else cachedPlayers=Collections.emptyList();updateVanillaNametags();ensureFallbackEntity();}
+    public void onTick(){if(!isActiveInstance())return;ensureHudBridge();updateKeys();if(mc.theWorld!=trackedWorld){restoreVanillaNametags();trackedWorld=mc.theWorld;fallbackEntity=null;cachedPlayers=Collections.emptyList();}if(config.enabled&&mc.theWorld!=null&&mc.thePlayer!=null)cachedPlayers=PlayerEspRenderer.collectPlayers(mc,config);else cachedPlayers=Collections.emptyList();updateVanillaNametags();ensureFallbackEntity();}
     private void updateKeys(){boolean menu=config.menuKey!=Keyboard.KEY_NONE&&Keyboard.isKeyDown(config.menuKey);boolean toggle=config.toggleKey!=Keyboard.KEY_NONE&&Keyboard.isKeyDown(config.toggleKey);
         if(mc.currentScreen==null&&menu&&!menuWasDown)mc.displayGuiScreen(new PlayerEspScreen(this,config));else if(mc.currentScreen==null&&toggle&&!toggleWasDown){config.enabled=!config.enabled;save();}menuWasDown=menu;toggleWasDown=toggle;}
     void onEntityRender(final float partial){
         if(!isActiveInstance()||!config.enabled||mc.thePlayer==null||mc.theWorld==null||isSecondaryPass())return;
-        long now=System.nanoTime();if(now-lastWorldRenderNanos<5000000L)return;lastWorldRenderNanos=now;
-        renderSafely(new RenderAction(){@Override public void run(){PlayerEspRenderer.renderWorld(mc,config,cachedPlayers,partial);}});
-        if(now-lastOverlayCallbackNanos>250000000L)renderOverlay(now);
+        latestPartialTicks=partial;
+        long now=System.nanoTime();
+        if(now-lastOverlayCallbackNanos>250000000L)renderWorld(now,partial);
     }
     public void onOverlayRender(int pass){
         if(!isActiveInstance()||mc.thePlayer==null||mc.theWorld==null||pass!=0||isSecondaryPass())return;
-        long now=System.nanoTime();lastOverlayCallbackNanos=now;renderOverlay(now);
+        long now=System.nanoTime();lastOverlayCallbackNanos=now;renderWorld(now,latestPartialTicks);
+    }
+    void onHudRender(float partial){if(!isActiveInstance()||!config.enabled||mc.thePlayer==null||mc.theWorld==null)return;latestPartialTicks=partial;renderOverlay(System.nanoTime());}
+    private void renderWorld(long now,final float partial){
+        if(!config.enabled||now-lastWorldRenderNanos<5000000L)return;lastWorldRenderNanos=now;
+        renderSafely(new RenderAction(){@Override public void run(){PlayerEspRenderer.renderWorld(mc,config,cachedPlayers,partial);}});
     }
     private void renderOverlay(long now){
-        if(!config.enabled||!config.targetHud||now-lastOverlayRenderNanos<5000000L)return;lastOverlayRenderNanos=now;
+        if(!config.enabled||!PlayerEspRenderer.needsOverlay(config)||now-lastOverlayRenderNanos<5000000L)return;lastOverlayRenderNanos=now;
         renderSafely(new RenderAction(){@Override public void run(){PlayerEspRenderer.renderOverlay(mc,config);}});
     }
     private void renderSafely(RenderAction action){
-        int oldMode=GL11.glGetInteger(GL11.GL_MATRIX_MODE),oldTexture=GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D),blendSrcRgb=GL11.glGetInteger(0x80C9),blendDstRgb=GL11.glGetInteger(0x80C8),blendSrcAlpha=GL11.glGetInteger(0x80CB),blendDstAlpha=GL11.glGetInteger(0x80CA);
-        boolean depth=GL11.glIsEnabled(GL11.GL_DEPTH_TEST),blend=GL11.glIsEnabled(GL11.GL_BLEND),texture=GL11.glIsEnabled(GL11.GL_TEXTURE_2D),lighting=GL11.glIsEnabled(GL11.GL_LIGHTING),fog=GL11.glIsEnabled(GL11.GL_FOG),alpha=GL11.glIsEnabled(GL11.GL_ALPHA_TEST),cull=GL11.glIsEnabled(GL11.GL_CULL_FACE),depthMask=GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+        int oldMode=GL11.glGetInteger(GL11.GL_MATRIX_MODE),oldActiveTexture=GL11.glGetInteger(GL13.GL_ACTIVE_TEXTURE),blendSrcRgb=GL11.glGetInteger(0x80C9),blendDstRgb=GL11.glGetInteger(0x80C8),blendSrcAlpha=GL11.glGetInteger(0x80CB),blendDstAlpha=GL11.glGetInteger(0x80CA);
+        GL13.glActiveTexture(OpenGlHelper.defaultTexUnit);int defaultTexture=GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);boolean defaultTextureEnabled=GL11.glIsEnabled(GL11.GL_TEXTURE_2D);
+        GL13.glActiveTexture(OpenGlHelper.lightmapTexUnit);int lightmapTexture=GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);boolean lightmapTextureEnabled=GL11.glIsEnabled(GL11.GL_TEXTURE_2D);GL13.glActiveTexture(oldActiveTexture);
+        boolean depth=GL11.glIsEnabled(GL11.GL_DEPTH_TEST),blend=GL11.glIsEnabled(GL11.GL_BLEND),lighting=GL11.glIsEnabled(GL11.GL_LIGHTING),fog=GL11.glIsEnabled(GL11.GL_FOG),alpha=GL11.glIsEnabled(GL11.GL_ALPHA_TEST),cull=GL11.glIsEnabled(GL11.GL_CULL_FACE),depthMask=GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
         GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPushMatrix();GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPushMatrix();
-        try{action.run();}finally{GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPopMatrix();GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPopMatrix();GL11.glMatrixMode(oldMode);GL11.glPopAttrib();syncRenderState(depth,blend,texture,lighting,fog,alpha,cull,depthMask,oldTexture,blendSrcRgb,blendDstRgb,blendSrcAlpha,blendDstAlpha);}
+        try{action.run();}finally{GL11.glMatrixMode(GL11.GL_MODELVIEW);GL11.glPopMatrix();GL11.glMatrixMode(GL11.GL_PROJECTION);GL11.glPopMatrix();GL11.glMatrixMode(oldMode);GL11.glPopAttrib();syncRenderState(depth,blend,defaultTextureEnabled,lightmapTextureEnabled,lighting,fog,alpha,cull,depthMask,oldActiveTexture,defaultTexture,lightmapTexture,blendSrcRgb,blendDstRgb,blendSrcAlpha,blendDstAlpha);}
     }
     private interface RenderAction{void run();}
     void onFallbackTick(){onTick();}
     void enableFallbackRendering(){if(fallbackInstalled)return;RenderManager manager=mc.getRenderManager();Map map=findRendererMap(manager);if(map==null)throw new IllegalStateException("Minecraft entity renderer map was not found.");map.put(PlayerEspRenderEntity.class,new PlayerEspEntityRenderer(manager,this));fallbackInstalled=true;}
+    private void ensureHudBridge(){if(mc.ingameGUI==null)return;if(mc.ingameGUI instanceof PlayerEspHudBridge){((PlayerEspHudBridge)mc.ingameGUI).setController(this);return;}mc.ingameGUI=new PlayerEspHudBridge(mc,mc.ingameGUI,this);}
     private void ensureFallbackEntity(){if(!fallbackInstalled||mc.theWorld==null||mc.thePlayer==null)return;if(fallbackWorld!=mc.theWorld){if(fallbackWorld!=null&&fallbackEntity!=null)fallbackWorld.removeEntityFromWorld(FALLBACK_ENTITY_ID);fallbackWorld=mc.theWorld;fallbackEntity=null;}
         if(fallbackEntity==null||fallbackWorld.getEntityByID(FALLBACK_ENTITY_ID)!=fallbackEntity){fallbackEntity=new PlayerEspRenderEntity(fallbackWorld);fallbackWorld.addEntityToWorld(FALLBACK_ENTITY_ID,fallbackEntity);}fallbackEntity.setPosition(mc.thePlayer.posX,mc.thePlayer.posY,mc.thePlayer.posZ);fallbackEntity.lastTickPosX=fallbackEntity.prevPosX=fallbackEntity.posX;fallbackEntity.lastTickPosY=fallbackEntity.prevPosY=fallbackEntity.posY;fallbackEntity.lastTickPosZ=fallbackEntity.prevPosZ=fallbackEntity.posZ;}
     private Map findRendererMap(RenderManager manager){for(Class<?> type=manager.getClass();type!=null;type=type.getSuperclass())for(Field field:type.getDeclaredFields()){if(!Map.class.isAssignableFrom(field.getType()))continue;try{field.setAccessible(true);Object value=field.get(manager);if(!(value instanceof Map))continue;Map map=(Map)value;for(Object object:map.entrySet()){Map.Entry entry=(Map.Entry)object;if(entry.getKey() instanceof Class&&Entity.class.isAssignableFrom((Class<?>)entry.getKey())&&entry.getValue() instanceof Render)return map;}}catch(Throwable ignored){}}return null;}
@@ -86,7 +97,15 @@ public final class PlayerEspController {
     public synchronized void save(){if(pendingSave!=null)pendingSave.cancel(false);pendingSave=saveExecutor.schedule(new Runnable(){@Override public void run(){config.save();}},200L,TimeUnit.MILLISECONDS);}
     void suppressMenuUntilRelease(){menuWasDown=true;}
     private boolean isActiveInstance(){return instanceToken.equals(System.getProperty(ACTIVE_PROPERTY));}
-    private static void syncRenderState(boolean depth,boolean blend,boolean texture,boolean lighting,boolean fog,boolean alpha,boolean cull,boolean depthMask,int boundTexture,int srcRgb,int dstRgb,int srcAlpha,int dstAlpha){if(depth)GlStateManager.enableDepth();else GlStateManager.disableDepth();if(blend)GlStateManager.enableBlend();else GlStateManager.disableBlend();if(texture)GlStateManager.enableTexture2D();else GlStateManager.disableTexture2D();if(lighting)GlStateManager.enableLighting();else GlStateManager.disableLighting();if(fog)GlStateManager.enableFog();else GlStateManager.disableFog();if(alpha)GlStateManager.enableAlpha();else GlStateManager.disableAlpha();if(cull)GlStateManager.enableCull();else GlStateManager.disableCull();GlStateManager.depthMask(depthMask);GlStateManager.tryBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);GlStateManager.bindTexture(boundTexture);GlStateManager.color(1,1,1,1);}
+    private static void syncRenderState(boolean depth,boolean blend,boolean defaultTextureEnabled,boolean lightmapTextureEnabled,boolean lighting,boolean fog,boolean alpha,boolean cull,boolean depthMask,int activeTexture,int defaultTexture,int lightmapTexture,int srcRgb,int dstRgb,int srcAlpha,int dstAlpha){
+        setRawCapability(GL11.GL_DEPTH_TEST,depth);setRawCapability(GL11.GL_BLEND,blend);setRawCapability(GL11.GL_LIGHTING,lighting);setRawCapability(GL11.GL_FOG,fog);setRawCapability(GL11.GL_ALPHA_TEST,alpha);setRawCapability(GL11.GL_CULL_FACE,cull);GL11.glDepthMask(depthMask);org.lwjgl.opengl.GL14.glBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);
+        GL13.glActiveTexture(OpenGlHelper.defaultTexUnit);setRawCapability(GL11.GL_TEXTURE_2D,defaultTextureEnabled);GL11.glBindTexture(GL11.GL_TEXTURE_2D,defaultTexture);
+        GL13.glActiveTexture(OpenGlHelper.lightmapTexUnit);setRawCapability(GL11.GL_TEXTURE_2D,lightmapTextureEnabled);GL11.glBindTexture(GL11.GL_TEXTURE_2D,lightmapTexture);GL13.glActiveTexture(activeTexture);GL11.glColor4f(1,1,1,1);
+        if(depth)GlStateManager.enableDepth();else GlStateManager.disableDepth();if(blend)GlStateManager.enableBlend();else GlStateManager.disableBlend();if(lighting)GlStateManager.enableLighting();else GlStateManager.disableLighting();if(fog)GlStateManager.enableFog();else GlStateManager.disableFog();if(alpha)GlStateManager.enableAlpha();else GlStateManager.disableAlpha();if(cull)GlStateManager.enableCull();else GlStateManager.disableCull();GlStateManager.depthMask(depthMask);GlStateManager.tryBlendFuncSeparate(srcRgb,dstRgb,srcAlpha,dstAlpha);
+        GlStateManager.setActiveTexture(OpenGlHelper.defaultTexUnit);if(defaultTextureEnabled)GlStateManager.enableTexture2D();else GlStateManager.disableTexture2D();GlStateManager.bindTexture(defaultTexture);
+        GlStateManager.setActiveTexture(OpenGlHelper.lightmapTexUnit);if(lightmapTextureEnabled)GlStateManager.enableTexture2D();else GlStateManager.disableTexture2D();GlStateManager.bindTexture(lightmapTexture);GlStateManager.setActiveTexture(activeTexture);GlStateManager.color(1,1,1,1);
+    }
+    private static void setRawCapability(int capability,boolean enabled){if(enabled)GL11.glEnable(capability);else GL11.glDisable(capability);}
     private void updateVanillaNametags(){
         if(!config.enabled||!config.nametag||mc.theWorld==null){restoreVanillaNametags();return;}
         Scoreboard scoreboard=mc.theWorld.getScoreboard();if(hiddenScoreboard!=scoreboard){restoreVanillaNametags();hiddenScoreboard=scoreboard;}

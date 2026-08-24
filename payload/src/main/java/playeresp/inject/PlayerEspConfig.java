@@ -9,16 +9,16 @@ import java.nio.charset.StandardCharsets;
 
 public final class PlayerEspConfig {
     public boolean enabled = true;
-    public int boxMode = 1; // 0 off, 1 2D, 2 3D
+    public int boxMode = 1; // 0 off, 1 2D, 2 3D, 3 player outline
     public float outlineThickness = 2.0F;
     public boolean chams = false;
-    public int chamsTransparency = 65;
     public boolean renderNpcs = false;
     public int colorMode = 1; // 0 nametag/team color, 1 custom
     public boolean nametag = true;
-    public float nameScale = 1.0F;
+    public boolean nametagBackground = true;
     public int healthBarPosition = 2; // 0 off, 1 top, 2 side
     public boolean healthText = true;
+    public boolean healthTextBackground = true;
     public boolean distance = true;
     public boolean armor = false;
     public boolean heldItem = false;
@@ -49,8 +49,7 @@ public final class PlayerEspConfig {
         try (Reader reader = new InputStreamReader(new FileInputStream(source), StandardCharsets.UTF_8)) {
             PlayerEspConfig config = GSON.fromJson(reader, PlayerEspConfig.class);
             if (config == null) config = new PlayerEspConfig();
-            if (config.boxMode < 0 || config.boxMode > 2) config.boxMode = 1;
-            if (config.nameScale < 0.5F || config.nameScale > 2.0F) config.nameScale = 1.0F;
+            if (config.boxMode < 0 || config.boxMode > 3) config.boxMode = 1;
             if (config.colorMode == 1 && config.color == 0xFFFF5555) config.color = 0xFFAAAAAA;
             if (!source.equals(file)) config.save();
             return config;

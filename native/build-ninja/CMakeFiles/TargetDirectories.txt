@@ -1,5 +1,0 @@
-D:/Workspace/mdk/playeresp-injector/native/build-ninja/CMakeFiles/loader.dir
-D:/Workspace/mdk/playeresp-injector/native/build-ninja/CMakeFiles/playeresp_hook.dir
-D:/Workspace/mdk/playeresp-injector/native/build-ninja/CMakeFiles/playeresp_library.dir
-D:/Workspace/mdk/playeresp-injector/native/build-ninja/CMakeFiles/edit_cache.dir
-D:/Workspace/mdk/playeresp-injector/native/build-ninja/CMakeFiles/rebuild_cache.dir

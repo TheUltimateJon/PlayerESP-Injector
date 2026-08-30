@@ -18,7 +18,12 @@ set_target_properties(playeresp_hook PROPERTIES OUTPUT_NAME "Entry" PREFIX "")
 add_library(playeresp_library SHARED library.cpp payloads.rc)
 set_property(SOURCE payloads.rc PROPERTY OBJECT_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/../payload/build/libs/playeresp_payload.jar;${CMAKE_CURRENT_SOURCE_DIR}/../payload/build/libs/playeresp_payload-runtime.jar;${CMAKE_CURRENT_SOURCE_DIR}/../payload/build/libs/playeresp_payload-named.jar")
-target_include_directories(playeresp_library PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../bedesp-injector/native/jni")
+# JNI headers are only needed by C++, not by the resource compiler. This also
+# keeps MinGW windres from splitting JDK include paths that contain spaces.
+foreach(JNI_INCLUDE_DIR IN LISTS JNI_INCLUDE_DIRS)
+    target_include_directories(playeresp_library PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:${JNI_INCLUDE_DIR}>")
+endforeach()
 target_compile_definitions(playeresp_library PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 set_target_properties(playeresp_library PROPERTIES OUTPUT_NAME "playeresp_library" PREFIX "")
 

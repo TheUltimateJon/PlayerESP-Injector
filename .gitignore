@@ -1,5 +1,5 @@
 # --- Build output (users build these themselves) ---
-native/build/
+native/build*/
 payload/build/
 payload/.gradle/
 

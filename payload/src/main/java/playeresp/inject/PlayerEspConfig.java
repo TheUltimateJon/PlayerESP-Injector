@@ -49,7 +49,7 @@ public final class PlayerEspConfig {
         try (Reader reader = new InputStreamReader(new FileInputStream(source), StandardCharsets.UTF_8)) {
             PlayerEspConfig config = GSON.fromJson(reader, PlayerEspConfig.class);
             if (config == null) config = new PlayerEspConfig();
-            if (config.boxMode < 0 || config.boxMode > 3) config.boxMode = 1;
+            config.sanitize();
             if (config.colorMode == 1 && config.color == 0xFFFF5555) config.color = 0xFFAAAAAA;
             if (!source.equals(file)) config.save();
             return config;
@@ -59,6 +59,7 @@ public final class PlayerEspConfig {
     }
 
     public void save() {
+        sanitize();
         File file = file();
         File parent = file.getParentFile();
         if (!parent.isDirectory()) parent.mkdirs();
@@ -66,4 +67,18 @@ public final class PlayerEspConfig {
             GSON.toJson(this, writer);
         } catch (Exception ignored) { }
     }
+
+    private void sanitize() {
+        if (boxMode < 0 || boxMode > 3) boxMode = 1;
+        if (healthBarPosition < 0 || healthBarPosition > 2) healthBarPosition = 2;
+        if (colorMode < 0 || colorMode > 1) colorMode = 1;
+        if (!Float.isFinite(outlineThickness)) outlineThickness = 2.0F;
+        outlineThickness = Math.max(0.5F, Math.min(5.0F, outlineThickness));
+        maxDistance = Math.max(8, Math.min(256, maxDistance));
+        menuKey = validKey(menuKey) ? menuKey : 43;
+        toggleKey = validKey(toggleKey) ? toggleKey : 0;
+        color |= 0xFF000000;
+    }
+
+    private static boolean validKey(int key) { return key >= 0 && key < 256; }
 }

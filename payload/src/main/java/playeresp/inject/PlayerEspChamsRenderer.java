@@ -24,7 +24,8 @@ final class PlayerEspChamsRenderer {
         }
 
         boolean oldShadow = manager.isRenderShadow();
-        GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+        GL11.glPushAttrib(GL11.GL_ENABLE_BIT | GL11.GL_COLOR_BUFFER_BIT | GL11.GL_DEPTH_BUFFER_BIT
+            | GL11.GL_LINE_BIT | GL11.GL_POLYGON_BIT | GL11.GL_TEXTURE_BIT | GL11.GL_CURRENT_BIT);
         GlStateManager.pushMatrix();
         try {
             manager.setRenderShadow(false);
@@ -36,13 +37,17 @@ final class PlayerEspChamsRenderer {
 
             for (PlayerEspProjectionRenderer.WorldEntry entry : entries) {
                 if (!(entry.player instanceof AbstractClientPlayer)) continue;
-                if (drawChams) {
+                if (drawChams && drawOutline) {
+                    renderer.setChamsOutline(entry.color, outlineWidth);
+                    renderer.doRender((AbstractClientPlayer) entry.player,
+                        entry.x - entry.originX, entry.y - entry.originY, entry.z - entry.originZ,
+                        entry.yaw, partialTicks);
+                } else if (drawChams) {
                     renderer.setChams(entry.color);
                     renderer.doRender((AbstractClientPlayer) entry.player,
                         entry.x - entry.originX, entry.y - entry.originY, entry.z - entry.originZ,
                         entry.yaw, partialTicks);
-                }
-                if (drawOutline) {
+                } else if (drawOutline) {
                     renderer.setOutline(entry.color, outlineWidth);
                     renderer.doRender((AbstractClientPlayer) entry.player,
                         entry.x - entry.originX, entry.y - entry.originY, entry.z - entry.originZ,
@@ -64,6 +69,7 @@ final class PlayerEspChamsRenderer {
         private float blue = 1.0F;
         private float lineWidth = 1.0F;
         private boolean outline;
+        private boolean fillBeforeOutline;
 
         ChamsPlayerRenderer(RenderManager manager) {
             super(manager);
@@ -75,6 +81,7 @@ final class PlayerEspChamsRenderer {
             green = (color >> 8 & 255) / 255.0F;
             blue = (color & 255) / 255.0F;
             outline = false;
+            fillBeforeOutline = false;
         }
 
         void setOutline(int color, float width) {
@@ -83,6 +90,12 @@ final class PlayerEspChamsRenderer {
             blue = (color & 255) / 255.0F;
             lineWidth = Math.max(0.5F, width);
             outline = true;
+            fillBeforeOutline = false;
+        }
+
+        void setChamsOutline(int color, float width) {
+            setOutline(color, width);
+            fillBeforeOutline = true;
         }
 
         @Override
@@ -93,6 +106,12 @@ final class PlayerEspChamsRenderer {
             GL11.glDisable(GL11.GL_ALPHA_TEST);
             GL11.glDisable(GL11.GL_TEXTURE_2D);
             if (outline) {
+                if (fillBeforeOutline) {
+                    GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_FILL);
+                    GlStateManager.color(red, green, blue, 1.0F);
+                    super.renderModel(player, limbSwing, limbSwingAmount, ageInTicks,
+                        netHeadYaw, headPitch, scaleFactor);
+                }
                 GL11.glEnable(GL11.GL_LINE_SMOOTH);
                 GL11.glLineWidth(lineWidth);
                 GL11.glPolygonMode(GL11.GL_FRONT_AND_BACK, GL11.GL_LINE);

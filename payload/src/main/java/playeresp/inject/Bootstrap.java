@@ -22,7 +22,6 @@ public final class Bootstrap {
                 @Override public void run() {
                     if (controller == null) {
                         controller = new PlayerEspController();
-                        controller.enableFallbackRendering();
                         controller.onTick();
                     }
                 }
@@ -48,6 +47,16 @@ public final class Bootstrap {
         if (value != null) value.onOverlayRender(pass);
     }
 
+    public static void onHudRender(float partialTicks) {
+        PlayerEspController value = controller;
+        if (value != null) value.onHudRender(partialTicks);
+    }
+
+    public static Class<?> getHudClass() {
+        Minecraft mc = Minecraft.getMinecraft();
+        return mc.ingameGUI == null ? null : mc.ingameGUI.getClass();
+    }
+
     public static synchronized void startFallback() {
         start();
         if (fallbackStarted) return;
@@ -55,6 +64,8 @@ public final class Bootstrap {
         try {
             mc.addScheduledTask(new Runnable() {
                 @Override public void run() {
+                    controller.enableFallbackRendering();
+                    controller.enableFallbackHud();
                     controller.onFallbackTick();
                 }
             }).get(10, TimeUnit.SECONDS);

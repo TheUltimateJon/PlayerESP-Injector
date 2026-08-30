@@ -3,4 +3,4 @@
 #define INJECTOR_ENTRY_FILE L"Entry.dll"
 #define INJECTOR_BOOTSTRAP_EXPORT "PlayerEspBootstrap"
 #define INJECTOR_SUCCESS_MESSAGE L"Success. Press \\ in Minecraft."
-#include "../../bedesp-injector/native/loader.cpp"
+#include "shared/loader_impl.cpp"
